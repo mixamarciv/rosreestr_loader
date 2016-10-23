@@ -1,0 +1,7 @@
+http://rosreestr.ru/api/online/macro_regions
+{"id":187000000000,"name":"Республика Коми"}
+
+http://rosreestr.ru/api/online/regions/187000000000
+{"id":187415000000,"name":"Инта"}
+
+
