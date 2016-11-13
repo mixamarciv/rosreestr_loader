@@ -14,10 +14,12 @@ go build -o app.exe
 ::app.exe
 :: >> app.exe.log 2>&1
 
-SET start_from=0
-SET load_count=10
-SET load_to=400
-SET update_only=1
+@SET start_from=220 - тут ошибки
+@SET start_from=290 - тут ошибки
+@SET start_from=77
+@SET load_count=1
+@SET load_to=400
+@SET update_only=1
 
 for /l %%i in (%start_from%,%load_count%,%load_to%) do (
 	app.exe --load_from %%i --load_count %load_count% --update_only %update_only%
