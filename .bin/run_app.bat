@@ -1,6 +1,6 @@
-ï»¿::Ð¿Ð¾Ð»ÑƒÑ‡Ð°ÐµÐ¼ curpath:
+::¯®«ãç ¥¬ curpath:
 @FOR /f %%i IN ("%0") DO SET curpath=%~dp0
-::Ð·Ð°Ð´Ð°ÐµÐ¼ Ð¾ÑÐ½Ð¾Ð²Ð½Ñ‹Ðµ Ð¿ÐµÑ€ÐµÐ¼ÐµÐ½Ð½Ñ‹Ðµ Ð¾ÐºÑ€ÑƒÐ¶ÐµÐ½Ð¸Ñ
+::§ ¤ ¥¬ ®á­®¢­ë¥ ¯¥à¥¬¥­­ë¥ ®ªàã¦¥­¨ï
 @CALL "%curpath%/set_path.bat"
 
 
@@ -14,15 +14,25 @@ go build -o app.exe
 ::app.exe
 :: >> app.exe.log 2>&1
 
-@SET start_from=220 - Ñ‚ÑƒÑ‚ Ð¾ÑˆÐ¸Ð±ÐºÐ¸
-@SET start_from=290 - Ñ‚ÑƒÑ‚ Ð¾ÑˆÐ¸Ð±ÐºÐ¸
-@SET start_from=77
+@SET start_from=220 - âãâ ®è¨¡ª¨
+@SET start_from=290 - âãâ ®è¨¡ª¨
+@SET start_from=0
 @SET load_count=1
-@SET load_to=400
+@SET load_to=350
 @SET update_only=1
 
+@SET options=--street "ç¥à­%%" --house "7%%"
+@SET options=--street "¬¨à %%" --house "25%%"
+@SET options=--street "£®àìª%%" --house "8%%"
+@SET options=--street "ªãà â%%" --house "7%%"
+@SET options=--street "¬®à®§%%" --house "%%"
+@SET options=--street "¬¨à %%" --house "__%%"
+@SET options=--street "ªãà%%" --house "68%%"
+
+::--street "ªãà%%" --house "68%%"
+
 for /l %%i in (%start_from%,%load_count%,%load_to%) do (
-	app.exe --load_from %%i --load_count %load_count% --update_only %update_only%
+	app.exe --load_from %%i --load_count %load_count% --update_only %update_only% %options%
 )
 
 @echo ==== end ======================================================================

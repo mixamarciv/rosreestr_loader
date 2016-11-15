@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 	//"text/template"
 	//"time"
 
@@ -33,9 +32,11 @@ func main() {
 	Initdb()
 
 	var opts struct {
-		Load_from   int `long:"load_from" description:"start load id from"`
-		Load_count  int `long:"load_count" description:"count id load"`
-		Update_only int `long:"update_only" description:"update only" default:"0"`
+		Load_from   int    `long:"load_from" description:"start load id from"`
+		Load_count  int    `long:"load_count" description:"count id load"`
+		Update_only int    `long:"update_only" description:"update only" default:"0"`
+		Street      string `long:"street" description:"street filter" default:"%"`
+		House       string `long:"house" description:"house filter" default:"%"`
 	}
 	_, err := flags.ParseArgs(&opts, os.Args)
 	LogPrintErrAndExit("ошибка разбора параметров", err)
@@ -54,13 +55,14 @@ func main() {
 		//LogPrint("загружаем список гуидов и адресов по которым нужно загрузить kadastrn")
 		first := Itoa(opts.Load_count)
 		skip := Itoa(opts.Load_from)
-		query := `SELECT FIRST ` + first + ` SKIP ` + skip + `  s.strname,t.house,t.fiasguid FROM t_obj_house t 
+		query := `SELECT FIRST ` + first + ` SKIP ` + skip + `  s.strname,t.house,t.strcode_house FROM t_obj_house t 
 	            		LEFT JOIN street_kladr s ON s.strcode=t.strcode
 	          		WHERE 1=1
 					  --AND t.house = '4'
 					  --AND t.strcode = '0078'
-					  AND COALESCE(t.fiasguid,'')!='' 
-					  -- AND t.house = '68'
+					  --AND COALESCE(t.fiasguid,'')!='' 
+					  AND UPPER(s.street) LIKE UPPER('` + opts.Street + `')
+					  AND UPPER(t.house)  LIKE UPPER('` + opts.House + `')
 					  /*****
 					  AND t.strcode != '0044'
 					  AND (     COALESCE(t.kadastrn1,'') = '' 
@@ -76,14 +78,14 @@ func main() {
 		cnt := 0
 		for rows.Next() {
 			cnt++
-			var strname, house, fiasguid NullString
+			var strname, house, strcode_house NullString
 
-			if err := rows.Scan(&strname, &house, &fiasguid); err != nil {
+			if err := rows.Scan(&strname, &house, &strcode_house); err != nil {
 				LogPrintErrAndExit("ERROR rows.Scan: \n"+query+"\n\n", err)
 			}
 			m := map[string]string{"street": mf.StrTrim(mf.StrTr(strname.get("-"), db_codepage, "utf-8")),
-				"house":    mf.StrTrim(mf.StrTr(house.get("-"), db_codepage, "utf-8")),
-				"fiasguid": mf.StrTrim(fiasguid.get("-"))}
+				"house":         mf.StrTrim(mf.StrTr(house.get("-"), db_codepage, "utf-8")),
+				"strcode_house": mf.StrTrim(strcode_house.get("-"))}
 			//fmt.Printf("%#v", m)
 
 			m["macroRegionId"] = "187000000000" //http://rosreestr.ru/api/online/macro_regions   {"id":187000000000,"name":"Республика Коми"}
@@ -91,6 +93,10 @@ func main() {
 			m["street_original"] = m["street"]
 			m["n_req"] = "0"
 			arr = append(arr, m)
+		}
+		if cnt == 0 {
+			LogPrint("\n\nадреса по заданным критериям не найдены")
+			LogPrintAndExit(fmt.Sprintf("%#v", opts))
 		}
 		LogPrint("\n\nзагружаем данные по " + Itoa(cnt) + " домам(у)")
 	}
@@ -157,12 +163,26 @@ func updatedb(info string, m map[string]interface{}) {
 
 func updatedb3(info string, m map[string]interface{}) {
 	h := m["house_data"].(map[string]string)
+	/********
 	query := "UPDATE t_obj_house SET kadastrn1=?,KADASTR_PRICE=?,KADASTR_PRICE_DATE=?,KADASTR_OB_AREA=?,KADASTR_FLOOR_CNT=?, "
 	query += "KADASTR_UFLOOR_CNT=?,KADASTR_WALL_INFO=?,KADASTR_BUILD_YEAR=? "
 	query += " WHERE fiasguid=? AND COALESCE(kadastrn1,'')='' "
 	_, err := db.Exec(query, h["kadastrn"], h["price"], h["price_date"], h["ob_area"], h["floor_cnt"],
 		h["ufloor_cnt"], h["wall_info"], h["build_year"], m["fiasguid"])
-	LogPrintErrAndExit(info+" ERROR db.Exec 1: \n"+query+"\n\n", err)
+	********/
+	query := "UPDATE t_obj_house SET kadastrn1='" + h["kadastrn"] + "', "
+	query += "  KADASTR_PRICE='" + h["price"] + "', "
+	query += "  KADASTR_PRICE_DATE='" + h["price_date"] + "', "
+	query += "  KADASTR_OB_AREA='" + h["ob_area"] + "', "
+	query += "  KADASTR_FLOOR_CNT='" + h["floor_cnt"] + "', "
+	query += "  KADASTR_UFLOOR_CNT='" + h["ufloor_cnt"] + "', "
+	query += "  KADASTR_WALL_INFO='" + h["wall_info"] + "', "
+	query += "  KADASTR_BUILD_YEAR='" + h["build_year"] + "' "
+	query += "WHERE strcode_house='" + m["strcode_house"].(string) + "' "
+	//query += "  AND COALESCE(kadastrn1,'')='' "
+	_, err := db.Exec(query)
+	LogPrint("\n" + query + "\n")
+	LogPrintErrAndExit(info+" ERROR db.Exec 1: \n"+query+"\n\n"+mf.ToJsonStr(h), err)
 
 	flats := m["flats"].([]map[string]string)
 	LogPrint(fmt.Sprintf(info+" количество квартир для обновления: %d", len(flats)))
@@ -177,12 +197,11 @@ func updatedb3(info string, m map[string]interface{}) {
 			continue
 		}
 		query := "UPDATE t_obj_flat f SET kadastrn1=?,KADASTR_PRICE=?,KADASTR_PRICE_DATE=?,KADASTR_OB_AREA=? "
-		query += "WHERE flat=? AND strcode=(SELECT MAX(t.strcode) FROM t_obj_house t WHERE t.fiasguid=?) "
-		query += "  AND house=(SELECT MAX(t.house) FROM t_obj_house t WHERE t.fiasguid=?)  "
+		query += "WHERE flat=? AND strcode_house=?  "
 		//query += "  AND COALESCE(kadastrn1,'')='' "
-		_, err := db.Exec(query, m["kadastrn"], m["price"], m["price_date"], m["ob_area"],
-			flatnumber, m["fiasguid"], m["fiasguid"])
-		LogPrintErrAndExit(info+" кв.["+flatnumber+"] ERROR db.Exec 2: \n"+query+"\n\n", err)
+		_, err := db.Exec(query, f["kadastrn"], f["price"], f["price_date"], f["ob_area"],
+			flatnumber, m["strcode_house"])
+		LogPrintErrAndExit(info+" кв.["+flatnumber+"] ERROR db.Exec 2: \n"+query+"\n\n"+mf.ToJsonStr(f), err)
 
 		cnt++
 	}
@@ -334,7 +353,7 @@ func (p *urllist) add(m map[string]string) {
 var url_host string = "https://rosreestr.ru"
 
 func loaditem3(info string, m map[string]string, n_req int) map[string]interface{} {
-	LogPrint("\n" + info + " load")
+	LogPrint("\n" + info + " загрузка списка")
 	ret := make(map[string]interface{})
 
 	url := url_host + "/wps/portal/online_request"
@@ -374,17 +393,17 @@ func loaditem3(info string, m map[string]string, n_req int) map[string]interface
 
 	//--------------------------------------------------------
 	//загружаем и парсим каждую страницу в map[string]string
-	ret = map[string]interface{}{"street": m["street"], "house": m["house"], "fiasguid": m["fiasguid"], "error": ""}
+	ret = map[string]interface{}{"street": m["street"], "house": m["house"], "strcode_house": m["strcode_house"], "error": ""}
 
 	data_flats := make([]map[string]string, 0)
 	data_houses := make([]map[string]string, 0)
 
 	//может быть несколько кадастровых номеров для одного и того же здания, выбираем первый с максимальной площадью здания
-	house_max_ob_area_zd := -1
+	var house_max_ob_area_zd float64 = -1
 	house_ok_i_zd := -1
 
 	//может быть несколько кадастровых номеров для одного и тоже здания, без указания параметра что это здание, выбираем с макс. площадью
-	house_max_ob_area_hz := -1
+	var house_max_ob_area_hz float64 = -1
 	house_ok_i_hz := -1
 
 	for i, m := range alist.a {
@@ -403,11 +422,13 @@ func loaditem3(info string, m map[string]string, n_req int) map[string]interface
 			data_houses = append(data_houses, t)
 			//LogPrint(fmt.Sprintf(adres+" %v", t))
 
-			v, _ := strconv.Atoi(t["ob_area"])
+			//v, _ := strconv.Atoi(t["ob_area"])
+			v, _ := strconv.ParseFloat(t["ob_area"], 64)
 			if t["type"] == "здание" {
 				LogPrint(fmt.Sprintf(info + " загружены данные по зданию: " + adres))
 				if house_ok_i_zd < 0 {
 					house_ok_i_zd = len(data_houses) - 1
+					house_max_ob_area_zd = v
 				}
 				if house_max_ob_area_zd < v {
 					house_ok_i_zd = len(data_houses) - 1
@@ -428,6 +449,11 @@ func loaditem3(info string, m map[string]string, n_req int) map[string]interface
 	if house_ok_i_zd >= 0 {
 		ret["house_data"] = data_houses[house_ok_i_zd]
 	} else {
+		if house_ok_i_hz < 0 {
+			house_ok_i_hz = 0
+			t := loadkadastrinfo_null()
+			data_houses = append(data_houses, t)
+		}
 		ret["house_data"] = data_houses[house_ok_i_hz]
 	}
 
@@ -437,79 +463,6 @@ func loaditem3(info string, m map[string]string, n_req int) map[string]interface
 
 	//LogPrintAndExit("конец")
 	return ret
-
-	/**********************
-			ret := map[string]interface{}{"street": m["street"], "house": m["house"], "fiasguid": m["fiasguid"], "kadastrn": ""}
-			ret["error"] = ""
-			ret["kadastrn"] = ""
-			flats := make(map[string]string, 0)
-			for _, flat := range r["objects"].([]interface{}) {
-				f := flat.(map[string]interface{})
-				apartment := f["apartment"].(string)
-				kadastrn := f["objectCn"].(string)
-				if apartment == "null" && kadastrn != "null" {
-					LogPrint("---------------------------------------------------------------------")
-					//для проверки можно использовать http://rosreestr.ru/api/online/fir_object/::objectId::
-					//но многих данных через апи всеравно нет, хотя их можно получить через https://rosreestr.ru/wps/portal/online_request
-					//поэтому загружаем все через loaditem3
-					delete(f, "house")
-					delete(f, "apartment")
-					delete(f, "subjectId")
-					delete(f, "objectCon")
-					delete(f, "regionKey")
-					delete(f, "street")
-					delete(f, "okato")
-					delete(f, "objectType")
-					delete(f, "regionId")
-					delete(f, "settlementId")
-					delete(f, "regionId")
-					s := mf.ToJsonStr(f)
-					s = strings.Replace(s, "\",\"", "\",\n\"", -1)
-					LogPrint(s)
-					if ret["kadastrn"] == "" {
-						ret["kadastrn"] = kadastrn
-					}
-					continue
-				}
-				flats[apartment] = kadastrn
-	**********************/
-
-	//LogPrint("not found form[name=search_action]")
-
-	/********
-		skip := 0 //флаг для загрузки ордеров с другого ресурса
-		sels := doc.Find(".price_check tr")
-		sels_type := "eve-marketdata.com"
-		if len(sels.Nodes) < 2 {
-			//LogPrint("skip " + sid + ": not found sell_orders")
-			skip++
-		}
-	*******/
-	/***************
-	url := "https://rosreestr.ru/wps/portal/online_request"
-	doc, err := goquery.NewDocument(url)
-	if err != nil {
-		LogPrint(Fmts("%#v", err))
-		LogPrintAndExit("request send error: \n url: " + url + "\n\n")
-	}
-
-	sel := doc.Find("h1")
-	if len(sel.Nodes) == 0 {
-		LogPrint("skip " + sid + ": not found h1")
-		return
-	}
-	name := Trim(sel.Text())
-
-	skip := 0 //флаг для загрузки ордеров с другого ресурса
-	sels := doc.Find(".price_check tr")
-	sels_type := "eve-marketdata.com"
-	if len(sels.Nodes) < 2 {
-		//LogPrint("skip " + sid + ": not found sell_orders")
-		skip++
-	}
-
-	LogPrint("load " + sid + ": " + name + ";  " + Itoa(len(sels.Nodes)) + " / " + Itoa(len(selb.Nodes)) + " " + info)
-	****************/
 }
 
 //отправляем запрос на список адресов по дому
@@ -551,37 +504,51 @@ func SendHttpRequestPOST_loadlist(urlStr string, m map[string]string) ([]byte, m
 	***************************/
 	//data.Add("settlement_id", "287415000000")
 
+	settlement_id := "-1"
+	settlement := ""
+
+	street := m["street"]
+	if mf.StrRegexpMatch("Абезь", street) {
+		settlement_id = "187415802001"
+		settlement = settlement_id
+
+		street = mf.StrRegexpReplace(street, "Абезь", "")
+		street = mf.StrTrim(street)
+		LogPrint("use street: \"" + street + "\" settlement_id: \"" + settlement_id + "\"")
+	}
+
 	//--------------------------------------------------------------------------
 	/***************************
 	//обязательно должны быть заданы все следующие поля(могут быть пустые но должны быть):
-	search_action:true
-	subject:
-	region:
-	settlement:
-	cad_num:
-	start_position:59
-	obj_num:
-	old_number:
-	search_type:ADDRESS
-	src_object:1
-	subject_id:187000000000
-	region_id:187415000000
-	settlement_type:-1
-	settlement_id:-1
-	street_type:str0
-	street:Мира
-	house:69
-	building:
-	structure:
-	apartment:
-	r_subject_id:101000000000
-	right_reg:
-	encumbrance_reg:
+	для города                                 для абези:
+	search_action:true                         search_action:true
+	subject:                                   subject:
+	region:                                    region:
+	settlement:                                settlement:187415802001
+	cad_num:                                   cad_num:
+	start_position:59                          start_position:59
+	obj_num:                                   obj_num:
+	old_number:                                old_number:
+	search_type:ADDRESS                        search_type:ADDRESS
+	src_object:1                               src_object:1
+	subject_id:187000000000                    subject_id:187000000000
+	region_id:187415000000                     region_id:187415000000
+	settlement_type:-1                         settlement_type:-1
+	settlement_id:-1                           settlement_id:187415802001
+	street_type:str0                           street_type:str0
+	street:Мира                                street:Вокзальная
+	house:69                                   house:3
+	building:                                  building:
+	structure:                                 structure:
+	apartment:                                 apartment:
+	r_subject_id:101000000000                  r_subject_id:101000000000
+	right_reg:                                 right_reg:
+	encumbrance_reg:                           encumbrance_reg:
 	****************************/
 	data.Set("search_action", "true")
 	data.Add("subject", "")
 	data.Add("region", "")
-	data.Add("settlement", "")
+	data.Add("settlement", settlement)
 	data.Add("start_position", "59")
 	data.Add("obj_num", "")
 	data.Add("old_number", "")
@@ -590,9 +557,9 @@ func SendHttpRequestPOST_loadlist(urlStr string, m map[string]string) ([]byte, m
 	data.Add("subject_id", "187000000000")
 	data.Add("region_id", "187415000000")
 	data.Add("settlement_type", "-1")
-	data.Add("settlement_id", "-1")
+	data.Add("settlement_id", settlement_id)
 	data.Add("street_type", "str0")
-	data.Add("street", m["street"])
+	data.Add("street", street)
 	data.Add("house", m["house"])
 	data.Add("building", "")
 	data.Add("structure", "")
@@ -633,7 +600,8 @@ func SendHttpRequestPOST_loadlist(urlStr string, m map[string]string) ([]byte, m
 //получаем просто результат гет запроса:
 func SendHttpRequestGET(info string, urlStr string, d map[string]interface{}) []byte {
 	//cookieJar, _ := cookiejar.New(nil)
-	time.Sleep(time.Second * 1)
+	//time.Sleep(time.Second * 1)
+
 	client := &http.Client{
 		Jar: d["cookie"].(http.CookieJar),
 	}
@@ -767,7 +735,7 @@ func loadkadastrinfo(info string, urlStr string, d map[string]interface{}) map[s
 	ret["kadastrn"] = findTrFieldByText(info, "Кадастровый номер", ".*", t, "-", true)
 	ret["ob_area"] = strings.Replace(findTrFieldByText(info, "Площадь ОКС", "^[\\d\\.,]+$", t, "0", false), ",", ".", -1)
 	ret["type"] = strings.ToLower(findTrFieldByText(info, "(ОКС) Тип:", ".*", t, "-", false))
-	ret["price"] = strings.Replace(findTrFieldByText(info, "Кадастровая стоимость", "^[\\d\\.,]+$", t, "-", false), ",", ".", -1)
+	ret["price"] = strings.Replace(findTrFieldByText(info, "Кадастровая стоимость", "^[\\d\\.,]+$", t, "0", false), ",", ".", -1)
 	ret["price_date"] = findTrFieldByText(info, "Дата утверждения стоимости", "^[\\d\\.-]+$", t, "-", false)
 
 	ret["floor_cnt"] = findTrFieldByText(info, "Этажность", "^\\d+$", t, "0", false)
@@ -785,6 +753,24 @@ func loadkadastrinfo(info string, urlStr string, d map[string]interface{}) map[s
 
 	//Кадастровый номер
 	//LogPrintAndExit(t.Text())
+	return ret
+}
+
+//возвращает пустую структуру со всеми но пустыми полями
+func loadkadastrinfo_null() map[string]string {
+	ret := make(map[string]string)
+	ret["kadastrn"] = "-"
+	ret["ob_area"] = "0"
+	ret["type"] = ""
+	ret["price"] = "0"
+	ret["price_date"] = ""
+
+	ret["floor_cnt"] = "0"
+	ret["ufloor_cnt"] = "0"
+	ret["wall_info"] = ""
+	ret["build_year"] = "0"
+
+	ret["flat"] = ""
 	return ret
 }
 
