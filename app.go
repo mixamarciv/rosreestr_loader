@@ -55,7 +55,7 @@ func main() {
 		//LogPrint("загружаем список гуидов и адресов по которым нужно загрузить kadastrn")
 		first := Itoa(opts.Load_count)
 		skip := Itoa(opts.Load_from)
-		query := `SELECT FIRST ` + first + ` SKIP ` + skip + `  s.strname,t.house,t.strcode_house FROM t_obj_house t 
+		query := `SELECT FIRST ` + first + ` SKIP ` + skip + `  s.strname,t.house,t.fstrcode_house FROM t_obj_house t 
 	            		LEFT JOIN street_kladr s ON s.strcode=t.strcode
 	          		WHERE 1=1
 					  --AND t.house = '4'
@@ -178,7 +178,7 @@ func updatedb3(info string, m map[string]interface{}) {
 	query += "  KADASTR_UFLOOR_CNT='" + h["ufloor_cnt"] + "', "
 	query += "  KADASTR_WALL_INFO='" + h["wall_info"] + "', "
 	query += "  KADASTR_BUILD_YEAR='" + h["build_year"] + "' "
-	query += "WHERE strcode_house='" + m["strcode_house"].(string) + "' "
+	query += "WHERE fstrcode_house='" + m["strcode_house"].(string) + "' "
 	//query += "  AND COALESCE(kadastrn1,'')='' "
 	_, err := db.Exec(query)
 	LogPrint("\n" + query + "\n")
@@ -197,7 +197,7 @@ func updatedb3(info string, m map[string]interface{}) {
 			continue
 		}
 		query := "UPDATE t_obj_flat f SET kadastrn1=?,KADASTR_PRICE=?,KADASTR_PRICE_DATE=?,KADASTR_OB_AREA=? "
-		query += "WHERE flat=? AND strcode_house=?  "
+		query += "WHERE flat=? AND fstrcode_house=?  "
 		//query += "  AND COALESCE(kadastrn1,'')='' "
 		_, err := db.Exec(query, f["kadastrn"], f["price"], f["price_date"], f["ob_area"],
 			flatnumber, m["strcode_house"])

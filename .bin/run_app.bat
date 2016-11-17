@@ -18,7 +18,7 @@ go build -o app.exe
 @SET start_from=290 - тут ошибки
 @SET start_from=0
 @SET load_count=1
-@SET load_to=350
+@SET load_to=1
 @SET update_only=1
 
 @SET options=--street "черн%%" --house "7%%"
@@ -28,6 +28,7 @@ go build -o app.exe
 @SET options=--street "мороз%%" --house "%%"
 @SET options=--street "мира%%" --house "__%%"
 @SET options=--street "кур%%" --house "68%%"
+@SET options=--street "пол%%" --house "16%%"
 
 ::--street "кур%%" --house "68%%"
 
